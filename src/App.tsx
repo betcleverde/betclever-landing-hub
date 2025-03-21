@@ -16,6 +16,9 @@ import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import NotFound from "./pages/NotFound";
+import TippgemeinschaftApply from "./pages/TippgemeinschaftApply";
+import AdminUsers from "./pages/AdminUsers";
+import AdminApplications from "./pages/AdminApplications";
 
 const queryClient = new QueryClient();
 
@@ -36,6 +39,9 @@ const App = () => (
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/tippgemeinschaft/anmelden" element={<TippgemeinschaftApply />} />
+                <Route path="/admin/users" element={<AdminUsers />} />
+                <Route path="/admin/applications" element={<AdminApplications />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </main>

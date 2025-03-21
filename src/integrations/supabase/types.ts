@@ -27,6 +27,84 @@ export type Database = {
         }
         Relationships: []
       }
+      tippgemeinschaft_applications: {
+        Row: {
+          admin_feedback: string | null
+          bank_documents_urls: string[] | null
+          city: string
+          created_at: string | null
+          credit_back_url: string | null
+          credit_front_url: string | null
+          email: string
+          first_name: string
+          giro_back_url: string | null
+          giro_front_url: string | null
+          house_number: string
+          id: string
+          id_back_url: string | null
+          id_front_url: string | null
+          id_selfie_url: string | null
+          last_name: string
+          phone: string
+          postal_code: string
+          status: string | null
+          street: string
+          unlocked_fields: string[] | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          admin_feedback?: string | null
+          bank_documents_urls?: string[] | null
+          city: string
+          created_at?: string | null
+          credit_back_url?: string | null
+          credit_front_url?: string | null
+          email: string
+          first_name: string
+          giro_back_url?: string | null
+          giro_front_url?: string | null
+          house_number: string
+          id?: string
+          id_back_url?: string | null
+          id_front_url?: string | null
+          id_selfie_url?: string | null
+          last_name: string
+          phone: string
+          postal_code: string
+          status?: string | null
+          street: string
+          unlocked_fields?: string[] | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          admin_feedback?: string | null
+          bank_documents_urls?: string[] | null
+          city?: string
+          created_at?: string | null
+          credit_back_url?: string | null
+          credit_front_url?: string | null
+          email?: string
+          first_name?: string
+          giro_back_url?: string | null
+          giro_front_url?: string | null
+          house_number?: string
+          id?: string
+          id_back_url?: string | null
+          id_front_url?: string | null
+          id_selfie_url?: string | null
+          last_name?: string
+          phone?: string
+          postal_code?: string
+          status?: string | null
+          street?: string
+          unlocked_fields?: string[] | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
