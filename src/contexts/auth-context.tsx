@@ -5,6 +5,15 @@ interface User {
   id: string;
   email: string;
   name?: string;
+  isAdmin?: boolean;
+}
+
+interface UserAccount {
+  id: string;
+  email: string;
+  password: string;
+  name?: string;
+  isAdmin?: boolean;
 }
 
 interface AuthContextType {
@@ -27,6 +36,25 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext);
 
+// Helper to initialize the database with admin account if needed
+const initUserDatabase = (): UserAccount[] => {
+  const existingUsers = localStorage.getItem("userAccounts");
+  if (existingUsers) {
+    return JSON.parse(existingUsers);
+  }
+  
+  // Create admin account if no users exist
+  const adminAccount: UserAccount = {
+    id: "admin-" + Math.random().toString(36).substr(2, 9),
+    email: "admin@betclever.de",
+    password: "Ver4Wittert!Ver4Wittert!",
+    isAdmin: true
+  };
+  
+  localStorage.setItem("userAccounts", JSON.stringify([adminAccount]));
+  return [adminAccount];
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
@@ -35,6 +63,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Initialize the user database
+    initUserDatabase();
+    
     // Check for saved user in localStorage
     const savedUser = localStorage.getItem("user");
     if (savedUser) {
@@ -51,15 +82,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       // Simulate API request
       await new Promise((resolve) => setTimeout(resolve, 1000));
       
-      // In a real app, you would validate credentials with a backend
-      if (email && password) {
-        const user = {
-          id: "user-" + Math.random().toString(36).substr(2, 9),
-          email,
-        };
-        
-        setUser(user);
-        localStorage.setItem("user", JSON.stringify(user));
+      // Get users from localStorage
+      const users: UserAccount[] = JSON.parse(localStorage.getItem("userAccounts") || "[]");
+      
+      // Find user with matching email and password
+      const foundUser = users.find(
+        u => u.email.toLowerCase() === email.toLowerCase() && u.password === password
+      );
+      
+      if (foundUser) {
+        // Remove password before storing in session
+        const { password, ...userWithoutPassword } = foundUser;
+        setUser(userWithoutPassword);
+        localStorage.setItem("user", JSON.stringify(userWithoutPassword));
       } else {
         throw new Error("Ungültige Anmeldedaten");
       }
@@ -79,16 +114,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       // Simulate API request
       await new Promise((resolve) => setTimeout(resolve, 1000));
       
-      // In a real app, you would register with a backend
+      // Get existing users
+      const users: UserAccount[] = JSON.parse(localStorage.getItem("userAccounts") || "[]");
+      
+      // Check if user with this email already exists
+      if (users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
+        throw new Error("Ein Benutzer mit dieser E-Mail existiert bereits");
+      }
+      
       if (email && password && name) {
-        const user = {
+        // Create new user
+        const newUser: UserAccount = {
           id: "user-" + Math.random().toString(36).substr(2, 9),
           email,
-          name,
+          password,
+          name
         };
         
-        setUser(user);
-        localStorage.setItem("user", JSON.stringify(user));
+        // Add to users array and save to localStorage
+        users.push(newUser);
+        localStorage.setItem("userAccounts", JSON.stringify(users));
+        
+        // Log user in by setting the current user (without password)
+        const { password: _, ...userWithoutPassword } = newUser;
+        setUser(userWithoutPassword);
+        localStorage.setItem("user", JSON.stringify(userWithoutPassword));
       } else {
         throw new Error("Bitte fülle alle Felder aus");
       }
