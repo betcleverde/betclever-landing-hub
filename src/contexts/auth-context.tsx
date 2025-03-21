@@ -19,7 +19,7 @@ interface UserAccount {
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name: string) => Promise<void>;
+  register: (email: string, password: string) => Promise<void>;
   logout: () => void;
   isLoading: boolean;
   error: string | null;
@@ -106,7 +106,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const register = async (email: string, password: string, name: string) => {
+  const register = async (email: string, password: string) => {
     setIsLoading(true);
     setError(null);
     
@@ -122,13 +122,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         throw new Error("Ein Benutzer mit dieser E-Mail existiert bereits");
       }
       
-      if (email && password && name) {
+      if (email && password) {
         // Create new user
         const newUser: UserAccount = {
           id: "user-" + Math.random().toString(36).substr(2, 9),
           email,
-          password,
-          name
+          password
         };
         
         // Add to users array and save to localStorage

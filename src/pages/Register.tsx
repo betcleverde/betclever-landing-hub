@@ -10,7 +10,6 @@ import { Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
 const Register = () => {
-  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -36,7 +35,7 @@ const Register = () => {
     }
     
     try {
-      await register(email, password, name);
+      await register(email, password);
       navigate("/dashboard");
       toast({
         title: "Registrierung erfolgreich",
@@ -62,18 +61,6 @@ const Register = () => {
 
         <div className="bg-card border border-border/50 rounded-xl p-8 shadow-xl animate-fade-up animation-delay-400">
           <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Dein Name"
-                required
-                className="bg-background border-border/50"
-              />
-            </div>
-
             <div className="space-y-2">
               <Label htmlFor="email">E-Mail</Label>
               <Input
