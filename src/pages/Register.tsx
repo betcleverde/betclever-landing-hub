@@ -36,12 +36,13 @@ const Register = () => {
     
     try {
       await register(email, password);
-      navigate("/dashboard");
+      // Not redirecting automatically as email verification may be required
       toast({
         title: "Registrierung erfolgreich",
-        description: "Willkommen bei BETCLEVER!",
+        description: "Du kannst dich jetzt anmelden.",
         duration: 3000,
       });
+      navigate("/login");
     } catch (err) {
       // Error is handled in auth context
     }
@@ -153,6 +154,3 @@ const Register = () => {
       </div>
     </div>
   );
-};
-
-export default Register;

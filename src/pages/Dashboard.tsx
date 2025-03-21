@@ -3,6 +3,8 @@ import { useEffect } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
 
 const Dashboard = () => {
   const { user, isLoading } = useAuth();
@@ -14,7 +16,24 @@ const Dashboard = () => {
     }
   }, [user, isLoading, navigate]);
 
-  if (isLoading) {
+  const { data: profile, isLoading: profileLoading } = useQuery({
+    queryKey: ['profile', user?.id],
+    queryFn: async () => {
+      if (!user) return null;
+      
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+        
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user,
+  });
+
+  if (isLoading || profileLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="w-8 h-8 text-beige animate-spin" />
@@ -34,11 +53,11 @@ const Dashboard = () => {
             Dashboard
           </h1>
           <p className="text-beige/70 animate-fade-up animation-delay-200">
-            Willkommen zurück, {user.name || user.email}{user.isAdmin ? " (Administrator)" : ""}
+            Willkommen zurück, {user.email}{profile?.is_admin ? " (Administrator)" : ""}
           </p>
         </div>
 
-        {user.isAdmin ? (
+        {profile?.is_admin ? (
           <div className="glass-beige p-8 rounded-xl animate-fade-up animation-delay-400">
             <h2 className="text-2xl font-bold text-beige mb-4">Admin-Bereich</h2>
             <p className="text-beige text-lg mb-4">

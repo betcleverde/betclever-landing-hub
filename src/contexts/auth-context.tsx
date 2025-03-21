@@ -1,77 +1,58 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
-
-interface User {
-  id: string;
-  email: string;
-  name?: string;
-  isAdmin?: boolean;
-}
-
-interface UserAccount {
-  id: string;
-  email: string;
-  password: string;
-  name?: string;
-  isAdmin?: boolean;
-}
+import { supabase } from "@/integrations/supabase/client";
+import { User, Session } from "@supabase/supabase-js";
+import { useToast } from "@/components/ui/use-toast";
 
 interface AuthContextType {
   user: User | null;
+  session: Session | null;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   isLoading: boolean;
   error: string | null;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
+  session: null,
   login: async () => {},
   register: async () => {},
-  logout: () => {},
+  logout: async () => {},
   isLoading: false,
   error: null,
 });
 
 export const useAuth = () => useContext(AuthContext);
 
-// Helper to initialize the database with admin account if needed
-const initUserDatabase = (): UserAccount[] => {
-  const existingUsers = localStorage.getItem("userAccounts");
-  if (existingUsers) {
-    return JSON.parse(existingUsers);
-  }
-  
-  // Create admin account if no users exist
-  const adminAccount: UserAccount = {
-    id: "admin-" + Math.random().toString(36).substr(2, 9),
-    email: "admin@betclever.de",
-    password: "Ver4Wittert!Ver4Wittert!",
-    isAdmin: true
-  };
-  
-  localStorage.setItem("userAccounts", JSON.stringify([adminAccount]));
-  return [adminAccount];
-};
-
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
-    // Initialize the user database
-    initUserDatabase();
-    
-    // Check for saved user in localStorage
-    const savedUser = localStorage.getItem("user");
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
-    setIsLoading(false);
+    // Set up auth state listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        console.log("Auth state changed:", event, session);
+        setSession(session);
+        setUser(session?.user ?? null);
+      }
+    );
+
+    // THEN check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setIsLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -79,28 +60,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setError(null);
     
     try {
-      // Simulate API request
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
       
-      // Get users from localStorage
-      const users: UserAccount[] = JSON.parse(localStorage.getItem("userAccounts") || "[]");
+      if (error) throw error;
       
-      // Find user with matching email and password
-      const foundUser = users.find(
-        u => u.email.toLowerCase() === email.toLowerCase() && u.password === password
-      );
-      
-      if (foundUser) {
-        // Remove password before storing in session
-        const { password, ...userWithoutPassword } = foundUser;
-        setUser(userWithoutPassword);
-        localStorage.setItem("user", JSON.stringify(userWithoutPassword));
-      } else {
-        throw new Error("Ungültige Anmeldedaten");
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Ein Fehler ist aufgetreten");
+      console.log("Login successful:", data);
+    } catch (err: any) {
+      setError(err.message || "Fehler bei der Anmeldung");
       console.error("Login error:", err);
+      throw err;
     } finally {
       setIsLoading(false);
     }
@@ -111,53 +82,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setError(null);
     
     try {
-      // Simulate API request
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
       
-      // Get existing users
-      const users: UserAccount[] = JSON.parse(localStorage.getItem("userAccounts") || "[]");
+      if (error) throw error;
       
-      // Check if user with this email already exists
-      if (users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
-        throw new Error("Ein Benutzer mit dieser E-Mail existiert bereits");
+      console.log("Registration successful:", data);
+      
+      // Check if email confirmation is required
+      if (data.user && data.user.identities && data.user.identities.length === 0) {
+        toast({
+          title: "Email-Bestätigung erforderlich",
+          description: "Bitte überprüfe deinen Posteingang und bestätige deine E-Mail-Adresse",
+          duration: 5000,
+        });
       }
-      
-      if (email && password) {
-        // Create new user
-        const newUser: UserAccount = {
-          id: "user-" + Math.random().toString(36).substr(2, 9),
-          email,
-          password
-        };
-        
-        // Add to users array and save to localStorage
-        users.push(newUser);
-        localStorage.setItem("userAccounts", JSON.stringify(users));
-        
-        // Log user in by setting the current user (without password)
-        const { password: _, ...userWithoutPassword } = newUser;
-        setUser(userWithoutPassword);
-        localStorage.setItem("user", JSON.stringify(userWithoutPassword));
-      } else {
-        throw new Error("Bitte fülle alle Felder aus");
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Ein Fehler ist aufgetreten");
+    } catch (err: any) {
+      setError(err.message || "Fehler bei der Registrierung");
       console.error("Registration error:", err);
+      throw err;
     } finally {
       setIsLoading(false);
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem("user");
+  const logout = async () => {
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+    } catch (err: any) {
+      console.error("Logout error:", err);
+      toast({
+        title: "Fehler beim Abmelden",
+        description: err.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <AuthContext.Provider
       value={{
         user,
+        session,
         login,
         register,
         logout,
