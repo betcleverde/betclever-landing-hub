@@ -1,8 +1,7 @@
-
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Loader2, Search, ArrowLeft, Eye, Download, CheckCircle, XCircle, Edit } from "lucide-react";
+import { Loader2, Search, ArrowLeft, Eye, Download, CheckCircle, XCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/components/ui/use-toast";
@@ -54,23 +53,35 @@ const AdminApplications = () => {
   const { data: applications, isLoading: applicationsLoading, refetch: refetchApplications } = useQuery({
     queryKey: ['admin-applications', filterUserId],
     queryFn: async () => {
-      // Build query
-      let query = supabase
-        .from('tippgemeinschaft_applications')
-        .select(`
-          *,
-          profiles:user_id (*)
-        `);
-      
-      // Apply user filter if provided
-      if (filterUserId) {
-        query = query.eq('user_id', filterUserId);
+      try {
+        // Build query
+        let query = supabase
+          .from('tippgemeinschaft_applications')
+          .select();
+        
+        // Apply user filter if provided
+        if (filterUserId) {
+          query = query.eq('user_id', filterUserId);
+        }
+        
+        const { data, error } = await query;
+        
+        if (error) {
+          console.error("Error fetching applications:", error);
+          throw error;
+        }
+        
+        if (!data || data.length === 0) {
+          console.log("No applications found");
+          return [];
+        }
+        
+        console.log("Fetched applications:", data);
+        return data;
+      } catch (error) {
+        console.error("Error in queryFn:", error);
+        return [];
       }
-      
-      const { data, error } = await query;
-      
-      if (error) throw error;
-      return data;
     },
     enabled: !!user && !!profile?.is_admin,
   });
@@ -100,7 +111,7 @@ const AdminApplications = () => {
       setDialogOpen(false);
       refetchApplications();
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast({
         title: "Fehler",
         description: error.message || "Antrag konnte nicht freigegeben werden.",
@@ -135,7 +146,7 @@ const AdminApplications = () => {
       setDialogOpen(false);
       refetchApplications();
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast({
         title: "Fehler",
         description: error.message || "Antrag konnte nicht zurückgewiesen werden.",
@@ -288,6 +299,8 @@ const AdminApplications = () => {
   if (!user || !profile?.is_admin) {
     return null;
   }
+  
+  console.log("Rendered applications:", filteredApplications);
   
   return (
     <div className="pt-32 pb-24 px-6">

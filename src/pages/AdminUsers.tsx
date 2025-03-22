@@ -45,27 +45,45 @@ const AdminUsers = () => {
   const { data: users, isLoading: usersLoading, refetch: refetchUsers } = useQuery({
     queryKey: ['admin-users'],
     queryFn: async () => {
-      const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
-      
-      if (authError) throw authError;
-      
-      // Fetch profiles to check admin status
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('*');
+      try {
+        // First get all profiles to check admin status
+        const { data: profiles, error: profilesError } = await supabase
+          .from('profiles')
+          .select('*');
+          
+        if (profilesError) throw profilesError;
         
-      if (profilesError) throw profilesError;
-      
-      // Merge auth users with profiles
-      const mergedUsers = authUsers.users.map(authUser => {
-        const userProfile = profiles.find(p => p.id === authUser.id);
-        return {
-          ...authUser,
-          is_admin: userProfile?.is_admin || false
-        };
-      });
-      
-      return mergedUsers;
+        // Get all users from auth.users via admin API (this may fail without service role)
+        try {
+          const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
+          
+          if (authError) throw authError;
+          
+          // Merge auth users with profiles
+          const mergedUsers = authUsers.users.map(authUser => {
+            const userProfile = profiles.find(p => p.id === authUser.id);
+            return {
+              ...authUser,
+              is_admin: userProfile?.is_admin || false
+            };
+          });
+          
+          return mergedUsers;
+        } catch (error) {
+          // Fallback: If admin API fails, use only profiles
+          console.log("Admin API failed, using profiles only", error);
+          return profiles.map(profile => ({
+            id: profile.id,
+            email: "N/A", // Email isn't accessible without admin API
+            is_admin: profile.is_admin || false,
+            last_sign_in_at: null,
+            banned: false
+          }));
+        }
+      } catch (error) {
+        console.error("Error fetching users:", error);
+        return [];
+      }
     },
     enabled: !!user && !!profile?.is_admin,
   });
@@ -73,13 +91,18 @@ const AdminUsers = () => {
   // Update user email
   const updateEmailMutation = useMutation({
     mutationFn: async ({ userId, email }: { userId: string, email: string }) => {
-      const { data, error } = await supabase.auth.admin.updateUserById(
-        userId,
-        { email }
-      );
-      
-      if (error) throw error;
-      return data;
+      try {
+        const { data, error } = await supabase.auth.admin.updateUserById(
+          userId,
+          { email }
+        );
+        
+        if (error) throw error;
+        return data;
+      } catch (error: any) {
+        console.error("Update email error:", error);
+        throw new Error(error.message || "E-Mail konnte nicht aktualisiert werden.");
+      }
     },
     onSuccess: () => {
       toast({
@@ -90,40 +113,10 @@ const AdminUsers = () => {
       setDialogOpen(false);
       refetchUsers();
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast({
         title: "Fehler",
         description: error.message || "E-Mail konnte nicht aktualisiert werden.",
-        variant: "destructive",
-        duration: 5000,
-      });
-    }
-  });
-  
-  // Update user password
-  const updatePasswordMutation = useMutation({
-    mutationFn: async ({ userId, password }: { userId: string, password: string }) => {
-      const { data, error } = await supabase.auth.admin.updateUserById(
-        userId,
-        { password }
-      );
-      
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => {
-      toast({
-        title: "Passwort aktualisiert",
-        description: "Das Passwort wurde erfolgreich aktualisiert.",
-        duration: 3000,
-      });
-      setDialogOpen(false);
-      refetchUsers();
-    },
-    onError: (error) => {
-      toast({
-        title: "Fehler",
-        description: error.message || "Passwort konnte nicht aktualisiert werden.",
         variant: "destructive",
         duration: 5000,
       });
@@ -150,10 +143,45 @@ const AdminUsers = () => {
       });
       refetchUsers();
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast({
         title: "Fehler",
         description: error.message || "Status konnte nicht aktualisiert werden.",
+        variant: "destructive",
+        duration: 5000,
+      });
+    }
+  });
+  
+  // Update user password
+  const updatePasswordMutation = useMutation({
+    mutationFn: async ({ userId, password }: { userId: string, password: string }) => {
+      try {
+        const { data, error } = await supabase.auth.admin.updateUserById(
+          userId,
+          { password }
+        );
+        
+        if (error) throw error;
+        return data;
+      } catch (error: any) {
+        console.error("Update password error:", error);
+        throw new Error(error.message || "Passwort konnte nicht aktualisiert werden.");
+      }
+    },
+    onSuccess: () => {
+      toast({
+        title: "Passwort aktualisiert",
+        description: "Das Passwort wurde erfolgreich aktualisiert.",
+        duration: 3000,
+      });
+      setDialogOpen(false);
+      refetchUsers();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Fehler",
+        description: error.message || "Passwort konnte nicht aktualisiert werden.",
         variant: "destructive",
         duration: 5000,
       });
@@ -271,53 +299,61 @@ const AdminUsers = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredUsers?.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium text-beige">{user.email}</TableCell>
-                    <TableCell className="text-beige">
-                      {user.banned ? (
-                        <span className="text-destructive">Gesperrt</span>
-                      ) : (
-                        <span className="text-green-500">Aktiv</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-beige/70">
-                      {user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString('de-DE') : 'Nie'}
-                    </TableCell>
-                    <TableCell>
-                      <div 
-                        className={`w-4 h-4 rounded-full ${user.is_admin ? 'bg-green-500' : 'bg-gray-400'}`}
-                        onClick={() => toggleAdminStatus(user.id, user.is_admin)}
-                        style={{ cursor: 'pointer' }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex space-x-2">
-                        <ButtonBeige 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => openEmailDialog(user)}
-                        >
-                          <Mail className="h-4 w-4" />
-                        </ButtonBeige>
-                        <ButtonBeige 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => openPasswordDialog(user)}
-                        >
-                          <Key className="h-4 w-4" />
-                        </ButtonBeige>
-                        <ButtonBeige 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => navigate(`/admin/applications?user=${user.id}`)}
-                        >
-                          <UserCog className="h-4 w-4" />
-                        </ButtonBeige>
-                      </div>
+                {filteredUsers && filteredUsers.length > 0 ? (
+                  filteredUsers.map((user) => (
+                    <TableRow key={user.id}>
+                      <TableCell className="font-medium text-beige">{user.email}</TableCell>
+                      <TableCell className="text-beige">
+                        {user.banned ? (
+                          <span className="text-destructive">Gesperrt</span>
+                        ) : (
+                          <span className="text-green-500">Aktiv</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-beige/70">
+                        {user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString('de-DE') : 'Nie'}
+                      </TableCell>
+                      <TableCell>
+                        <div 
+                          className={`w-4 h-4 rounded-full ${user.is_admin ? 'bg-green-500' : 'bg-gray-400'}`}
+                          onClick={() => toggleAdminStatus(user.id, user.is_admin)}
+                          style={{ cursor: 'pointer' }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex space-x-2">
+                          <ButtonBeige 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => openEmailDialog(user)}
+                          >
+                            <Mail className="h-4 w-4" />
+                          </ButtonBeige>
+                          <ButtonBeige 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => openPasswordDialog(user)}
+                          >
+                            <Key className="h-4 w-4" />
+                          </ButtonBeige>
+                          <ButtonBeige 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => navigate(`/admin/applications?user=${user.id}`)}
+                          >
+                            <UserCog className="h-4 w-4" />
+                          </ButtonBeige>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-8 text-beige/70">
+                      Keine Benutzer gefunden oder Fehler beim Laden der Benutzer.
                     </TableCell>
                   </TableRow>
-                ))}
+                )}
               </TableBody>
             </Table>
           </div>
