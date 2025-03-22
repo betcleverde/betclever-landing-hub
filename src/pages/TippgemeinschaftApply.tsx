@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { useNavigate } from "react-router-dom";
@@ -55,7 +54,6 @@ const FileUpload = ({
       
       if (error) throw error;
       
-      // Get the public URL
       const { data: urlData } = supabase.storage
         .from(bucket)
         .getPublicUrl(filePath);
@@ -167,7 +165,6 @@ const TippgemeinschaftApply = () => {
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [activeStep, setActiveStep] = useState(1);
   
-  // Fetch existing application if any
   const { data: application, isLoading: fetchingApplication } = useQuery({
     queryKey: ['application', user?.id],
     queryFn: async () => {
@@ -183,50 +180,73 @@ const TippgemeinschaftApply = () => {
       return data;
     },
     enabled: !!user,
-    onSuccess: (data) => {
-      if (data) {
-        // Pre-fill form with existing data
-        setFormData({
-          first_name: data.first_name || "",
-          last_name: data.last_name || "",
-          email: data.email || "",
-          phone: data.phone || "",
-          street: data.street || "",
-          house_number: data.house_number || "",
-          postal_code: data.postal_code || "",
-          city: data.city || "",
-        });
-        
-        setFileUrls({
-          id_front_url: data.id_front_url || "",
-          id_back_url: data.id_back_url || "",
-          id_selfie_url: data.id_selfie_url || "",
-          giro_front_url: data.giro_front_url || "",
-          giro_back_url: data.giro_back_url || "",
-          credit_front_url: data.credit_front_url || "",
-          credit_back_url: data.credit_back_url || "",
-          bank_documents_urls: data.bank_documents_urls || [],
-        });
+    meta: {
+      onSuccess: (data: any) => {
+        if (data) {
+          setFormData({
+            first_name: data.first_name || "",
+            last_name: data.last_name || "",
+            email: data.email || "",
+            phone: data.phone || "",
+            street: data.street || "",
+            house_number: data.house_number || "",
+            postal_code: data.postal_code || "",
+            city: data.city || "",
+          });
+          
+          setFileUrls({
+            id_front_url: data.id_front_url || "",
+            id_back_url: data.id_back_url || "",
+            id_selfie_url: data.id_selfie_url || "",
+            giro_front_url: data.giro_front_url || "",
+            giro_back_url: data.giro_back_url || "",
+            credit_front_url: data.credit_front_url || "",
+            credit_back_url: data.credit_back_url || "",
+            bank_documents_urls: data.bank_documents_urls || [],
+          });
+        }
       }
     }
   });
   
-  // Create or update application
+  useEffect(() => {
+    if (application) {
+      setFormData({
+        first_name: application.first_name || "",
+        last_name: application.last_name || "",
+        email: application.email || "",
+        phone: application.phone || "",
+        street: application.street || "",
+        house_number: application.house_number || "",
+        postal_code: application.postal_code || "",
+        city: application.city || "",
+      });
+      
+      setFileUrls({
+        id_front_url: application.id_front_url || "",
+        id_back_url: application.id_back_url || "",
+        id_selfie_url: application.id_selfie_url || "",
+        giro_front_url: application.giro_front_url || "",
+        giro_back_url: application.giro_back_url || "",
+        credit_front_url: application.credit_front_url || "",
+        credit_back_url: application.credit_back_url || "",
+        bank_documents_urls: application.bank_documents_urls || [],
+      });
+    }
+  }, [application]);
+  
   const mutation = useMutation({
     mutationFn: async (data: any) => {
       if (!user) throw new Error("Not authenticated");
       
       if (application) {
-        // Update existing application
         const { data: updateData, error } = await supabase
           .from('tippgemeinschaft_applications')
           .update({
             ...formData,
             ...fileUrls,
             updated_at: new Date().toISOString(),
-            // If admin unlocked fields, reset them when user updates
             unlocked_fields: [],
-            // Only reset status to 'eingereicht' if it was previously 'korrektur_erforderlich'
             ...(application.status === 'korrektur_erforderlich' ? { status: 'eingereicht' } : {}),
           })
           .eq('id', application.id)
@@ -235,7 +255,6 @@ const TippgemeinschaftApply = () => {
         if (error) throw error;
         return updateData;
       } else {
-        // Create new application
         const { data: insertData, error } = await supabase
           .from('tippgemeinschaft_applications')
           .insert({
@@ -270,14 +289,12 @@ const TippgemeinschaftApply = () => {
     }
   });
   
-  // Check if the field is unlocked for editing
   const isFieldUnlocked = (fieldName: string) => {
     if (!application || !application.unlocked_fields) return true;
     if (application.unlocked_fields.length === 0) return false;
     return application.unlocked_fields.includes(fieldName);
   };
   
-  // Add a bank document URL
   const addBankDocumentUrl = (url: string) => {
     setFileUrls(prev => ({
       ...prev,
@@ -285,7 +302,6 @@ const TippgemeinschaftApply = () => {
     }));
   };
   
-  // Handle form input changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -631,7 +647,6 @@ const TippgemeinschaftApply = () => {
     if (activeStep < 5) {
       setActiveStep(activeStep + 1);
     } else {
-      // Submit form
       mutation.mutate({});
     }
   };
