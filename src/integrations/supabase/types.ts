@@ -27,6 +27,33 @@ export type Database = {
         }
         Relationships: []
       }
+      support_tickets: {
+        Row: {
+          content: string
+          created_at: string | null
+          id: string
+          is_admin: boolean | null
+          user_email: string | null
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string | null
+          id?: string
+          is_admin?: boolean | null
+          user_email?: string | null
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string | null
+          id?: string
+          is_admin?: boolean | null
+          user_email?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       tippgemeinschaft_applications: {
         Row: {
           admin_feedback: string | null

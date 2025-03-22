@@ -4,6 +4,7 @@ import { Loader2, Upload, CheckCircle, AlertCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ButtonBeige } from "@/components/ui/button-beige";
 import { Label } from "@/components/ui/label";
+import { useAuth } from "@/contexts/auth-context";
 
 interface FileUploadProps {
   label: string;
