@@ -8,14 +8,17 @@ import { useAuth } from "@/contexts/auth-context";
 import { supabase } from "@/integrations/supabase/client";
 import { ButtonBeige } from "./ui/button-beige";
 import { Message, fromSupabase } from "@/types/supportTickets";
+import { useToast } from "@/hooks/use-toast";
 
 const SupportChat = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
+  const { toast } = useToast();
 
   useEffect(() => {
     if (!user) return;
@@ -29,7 +32,15 @@ const SupportChat = () => {
           .order('created_at', { ascending: true });
 
         if (error) throw error;
-        setMessages(fromSupabase<Message[]>(data));
+        const fetchedMessages = fromSupabase<Message[]>(data);
+        setMessages(fetchedMessages);
+        
+        // Count unread admin messages (messages sent by admin that the user hasn't seen yet)
+        const unreadAdminMessages = fetchedMessages.filter(msg => 
+          msg.is_admin && !isOpen
+        ).length;
+        
+        setUnreadCount(unreadAdminMessages);
       } catch (error) {
         console.error('Error fetching messages:', error);
       }
@@ -46,18 +57,36 @@ const SupportChat = () => {
         table: 'support_tickets',
         filter: `user_id=eq.${user.id}`,
       }, (payload) => {
-        setMessages((current) => [...current, fromSupabase<Message>(payload.new)]);
+        const newMessage = fromSupabase<Message>(payload.new);
+        setMessages((current) => [...current, newMessage]);
+        
+        // If the message is from admin and chat is not open, increment unread count
+        if (newMessage.is_admin && !isOpen) {
+          setUnreadCount(prev => prev + 1);
+          // Show a toast notification
+          toast({
+            title: "Neue Nachricht",
+            description: "Sie haben eine neue Nachricht vom Support erhalten.",
+          });
+        }
       })
       .subscribe();
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [user]);
+  }, [user, isOpen, toast]);
 
   useEffect(() => {
     scrollToBottom();
   }, [messages, isOpen]);
+
+  // Reset unread count when opening the chat
+  useEffect(() => {
+    if (isOpen) {
+      setUnreadCount(0);
+    }
+  }, [isOpen]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -145,12 +174,19 @@ const SupportChat = () => {
           </CardFooter>
         </Card>
       ) : (
-        <ButtonBeige
-          onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 rounded-full w-12 h-12 p-0 z-50"
-        >
-          <MessageCircle className="h-6 w-6" />
-        </ButtonBeige>
+        <div className="relative">
+          <ButtonBeige
+            onClick={() => setIsOpen(true)}
+            className="fixed bottom-6 right-6 rounded-full w-12 h-12 p-0 z-50"
+          >
+            <MessageCircle className="h-6 w-6" />
+          </ButtonBeige>
+          {unreadCount > 0 && (
+            <span className="absolute bottom-12 right-4 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center z-50">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
+        </div>
       )}
     </>
   );

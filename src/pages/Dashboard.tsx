@@ -8,16 +8,70 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ButtonBeige } from "@/components/ui/button-beige";
 import SupportChat from "@/components/SupportChat";
+import { Button } from "@/components/ui/button";
+import { fromSupabase, Message } from "@/types/supportTickets";
 
 const Dashboard = () => {
   const { user, isLoading } = useAuth();
   const navigate = useNavigate();
+  const [unreadMessages, setUnreadMessages] = useState(0);
 
   useEffect(() => {
     if (!isLoading && !user) {
       navigate("/login", { replace: true });
     }
   }, [user, isLoading, navigate]);
+
+  // Fetch unread messages for the user
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchUnreadMessages = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('support_tickets')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('is_admin', true)
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        if (error) throw error;
+        
+        // Count messages from last 24 hours as "unread" for simplicity
+        // In a real app, you might want to store a "read" status for each message
+        const oneDayAgo = new Date();
+        oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+        
+        const recentMessages = fromSupabase<Message[]>(data).filter(msg => 
+          new Date(msg.created_at) > oneDayAgo
+        );
+        
+        setUnreadMessages(recentMessages.length);
+      } catch (error) {
+        console.error('Error fetching unread messages:', error);
+      }
+    };
+
+    fetchUnreadMessages();
+
+    // Subscribe to new admin messages for real-time updates
+    const subscription = supabase
+      .channel('user_unread_messages')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'support_tickets',
+        filter: `user_id=eq.${user.id} AND is_admin=eq.true`,
+      }, () => {
+        fetchUnreadMessages();
+      })
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [user]);
 
   const { data: profile, isLoading: profileLoading } = useQuery({
     queryKey: ['profile', user?.id],
@@ -104,8 +158,13 @@ const Dashboard = () => {
                   <CardDescription className="text-beige/70">Benutzeranfragen bearbeiten</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ButtonBeige onClick={() => navigate("/admin/tickets")} className="w-full">
+                  <ButtonBeige onClick={() => navigate("/admin/tickets")} className="w-full relative">
                     <MessageCircle className="mr-2 h-4 w-4" /> Tickets anzeigen
+                    {unreadMessages > 0 && (
+                      <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                        {unreadMessages > 9 ? '9+' : unreadMessages}
+                      </span>
+                    )}
                   </ButtonBeige>
                 </CardContent>
               </Card>

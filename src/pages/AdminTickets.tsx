@@ -9,15 +9,18 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Message, fromSupabase } from "@/types/supportTickets";
 import { ButtonBeige } from "@/components/ui/button-beige";
+import { useToast } from "@/hooks/use-toast";
 
 const AdminTickets = () => {
   const { user, isLoading } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [isAdmin, setIsAdmin] = useState(false);
   const [allConversations, setAllConversations] = useState<{ [userId: string]: Message[] }>({});
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState("");
   const [isLoadingMessage, setIsLoadingMessage] = useState(false);
+  const [recentUsers, setRecentUsers] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -36,6 +39,13 @@ const AdminTickets = () => {
   useEffect(() => {
     if (selectedUserId) {
       scrollToBottom();
+      
+      // Remove from recent messages when conversation is selected
+      setRecentUsers(prev => {
+        const updated = new Set(prev);
+        updated.delete(selectedUserId);
+        return updated;
+      });
     }
   }, [selectedUserId, allConversations]);
 
@@ -79,6 +89,22 @@ const AdminTickets = () => {
       }, {});
 
       setAllConversations(groupedMessages);
+      
+      // Find recent messages (last 24 hours) to highlight them
+      const oneDayAgo = new Date();
+      oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+      
+      const recentUserIds = new Set<string>();
+      Object.entries(groupedMessages).forEach(([userId, messages]) => {
+        const latestMessage = messages[messages.length - 1];
+        if (latestMessage && 
+            !latestMessage.is_admin && 
+            new Date(latestMessage.created_at) > oneDayAgo) {
+          recentUserIds.add(userId);
+        }
+      });
+      
+      setRecentUsers(recentUserIds);
     } catch (error) {
       console.error('Error fetching conversations:', error);
     }
@@ -103,13 +129,28 @@ const AdminTickets = () => {
             [userId]: [...(prev[userId] || []), newMessage]
           };
         });
+        
+        // If message is from user (not admin) and not currently viewing that conversation
+        if (!newMessage.is_admin && selectedUserId !== newMessage.user_id) {
+          setRecentUsers(prev => {
+            const updated = new Set(prev);
+            updated.add(newMessage.user_id);
+            return updated;
+          });
+          
+          // Show toast notification for new message
+          toast({
+            title: "Neue Support-Anfrage",
+            description: `Neue Nachricht von ${newMessage.user_email || 'einem Benutzer'}`,
+          });
+        }
       })
       .subscribe();
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [user]);
+  }, [user, selectedUserId, toast]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -156,8 +197,25 @@ const AdminTickets = () => {
       if (selectedUserId === userId) {
         setSelectedUserId(null);
       }
+      
+      // Remove from recent users if present
+      setRecentUsers(prev => {
+        const updated = new Set(prev);
+        updated.delete(userId);
+        return updated;
+      });
+      
+      toast({
+        title: "Konversation gelöscht",
+        description: "Die Konversation wurde erfolgreich gelöscht."
+      });
     } catch (error) {
       console.error('Error deleting conversation:', error);
+      toast({
+        title: "Fehler",
+        description: "Die Konversation konnte nicht gelöscht werden.",
+        variant: "destructive"
+      });
     }
   };
 
@@ -193,6 +251,11 @@ const AdminTickets = () => {
                 <CardTitle className="text-beige">Konversationen</CardTitle>
                 <CardDescription className="text-beige/70">
                   {Object.keys(allConversations).length} aktive Gespräche
+                  {recentUsers.size > 0 && (
+                    <span className="ml-2 text-red-400">
+                      ({recentUsers.size} neu)
+                    </span>
+                  )}
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex-grow overflow-y-auto">
@@ -205,21 +268,35 @@ const AdminTickets = () => {
                     {Object.entries(allConversations).map(([userId, messages]) => {
                       const userEmail = messages[0]?.user_email || 'Unbekannter Benutzer';
                       const lastMessage = messages[messages.length - 1];
+                      const isRecent = recentUsers.has(userId);
+                      
                       return (
                         <div
                           key={userId}
                           className={`p-3 rounded-lg cursor-pointer transition-all ${
                             selectedUserId === userId
                               ? "bg-beige text-black"
-                              : "bg-black/30 text-beige hover:bg-beige/20"
+                              : isRecent
+                                ? "bg-beige/40 text-white border-l-4 border-red-500" 
+                                : "bg-black/30 text-beige hover:bg-beige/20"
                           }`}
                           onClick={() => setSelectedUserId(userId)}
                         >
                           <div className="flex justify-between items-start">
                             <div>
-                              <p className="font-medium truncate">{userEmail}</p>
+                              <p className="font-medium truncate flex items-center">
+                                {userEmail}
+                                {isRecent && (
+                                  <span className="ml-2 bg-red-500 text-white text-xs font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                                    !
+                                  </span>
+                                )}
+                              </p>
                               <p className="text-sm opacity-70 truncate">
                                 {lastMessage?.content}
+                              </p>
+                              <p className="text-xs opacity-50">
+                                {new Date(lastMessage?.created_at).toLocaleString()}
                               </p>
                             </div>
                             <Button

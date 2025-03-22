@@ -49,3 +49,9 @@ export interface ApplicationData {
   credit_back_url?: string | null;
   bank_documents_urls?: string[] | null;
 }
+
+// New interface for ticket notifications
+export interface TicketNotification {
+  userId: string;
+  unreadCount: number;
+}
