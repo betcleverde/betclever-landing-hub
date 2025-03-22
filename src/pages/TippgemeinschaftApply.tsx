@@ -10,130 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-
-interface FileUploadProps {
-  label: string;
-  bucket: string;
-  path: string;
-  accept?: string;
-  onUploadComplete: (url: string) => void;
-  initialUrl?: string;
-  isUnlocked?: boolean;
-}
-
-const FileUpload = ({ 
-  label, 
-  bucket, 
-  path, 
-  accept = "image/*,.pdf", 
-  onUploadComplete,
-  initialUrl,
-  isUnlocked = true
-}: FileUploadProps) => {
-  const [uploading, setUploading] = useState(false);
-  const [uploaded, setUploaded] = useState(!!initialUrl);
-  const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
-  
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0 || !user) {
-      return;
-    }
-    
-    const file = e.target.files[0];
-    const fileExt = file.name.split('.').pop();
-    const filePath = `${user.id}/${path}-${Date.now()}.${fileExt}`;
-    
-    setUploading(true);
-    setError(null);
-    
-    try {
-      const { data, error } = await supabase.storage
-        .from(bucket)
-        .upload(filePath, file, { upsert: true });
-      
-      if (error) throw error;
-      
-      const { data: urlData } = supabase.storage
-        .from(bucket)
-        .getPublicUrl(filePath);
-      
-      onUploadComplete(urlData.publicUrl);
-      setUploaded(true);
-    } catch (err: any) {
-      setError(err.message || "Ein Fehler ist beim Hochladen aufgetreten");
-      console.error("Upload error:", err);
-    } finally {
-      setUploading(false);
-    }
-  };
-  
-  return (
-    <div className="space-y-2">
-      <Label className="text-beige">{label}</Label>
-      <div className="border-2 border-dashed border-beige/30 rounded-lg p-4 text-center">
-        {uploaded ? (
-          <div className="space-y-2">
-            <div className="flex items-center justify-center text-green-500">
-              <CheckCircle className="w-8 h-8" />
-            </div>
-            <p className="text-beige">Datei hochgeladen</p>
-            {isUnlocked && (
-              <ButtonBeige 
-                variant="outline" 
-                onClick={() => document.getElementById(`file-${path}`)?.click()}
-                disabled={uploading}
-                size="sm"
-              >
-                Erneut hochladen
-              </ButtonBeige>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {isUnlocked ? (
-              <>
-                <div className="flex items-center justify-center text-beige/70">
-                  <Upload className="w-8 h-8" />
-                </div>
-                <p className="text-beige/70">
-                  Klicken oder ziehen Sie Ihre Datei hier hinein
-                </p>
-                <ButtonBeige 
-                  variant="outline" 
-                  onClick={() => document.getElementById(`file-${path}`)?.click()}
-                  disabled={uploading}
-                >
-                  {uploading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Lädt hoch...
-                    </>
-                  ) : (
-                    "Datei auswählen"
-                  )}
-                </ButtonBeige>
-              </>
-            ) : (
-              <div className="flex items-center justify-center text-beige/70">
-                <AlertCircle className="w-6 h-6 mr-2" />
-                <span>Hochladen nicht möglich</span>
-              </div>
-            )}
-          </div>
-        )}
-        {error && <p className="text-destructive text-sm mt-2">{error}</p>}
-        <input
-          id={`file-${path}`}
-          type="file"
-          className="hidden"
-          accept={accept}
-          onChange={handleFileChange}
-          disabled={uploading || !isUnlocked}
-        />
-      </div>
-    </div>
-  );
-};
+import FileUpload from "@/components/FileUpload";
 
 const TippgemeinschaftApply = () => {
   const { user, isLoading: authLoading } = useAuth();
@@ -162,6 +39,17 @@ const TippgemeinschaftApply = () => {
     bank_documents_urls: [] as string[],
   });
   
+  const [fileNames, setFileNames] = useState({
+    id_front_name: "",
+    id_back_name: "",
+    id_selfie_name: "",
+    giro_front_name: "",
+    giro_back_name: "",
+    credit_front_name: "",
+    credit_back_name: "",
+    bank_documents_names: [] as string[],
+  });
+  
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [activeStep, setActiveStep] = useState(1);
   
@@ -180,33 +68,6 @@ const TippgemeinschaftApply = () => {
       return data;
     },
     enabled: !!user,
-    meta: {
-      onSuccess: (data: any) => {
-        if (data) {
-          setFormData({
-            first_name: data.first_name || "",
-            last_name: data.last_name || "",
-            email: data.email || "",
-            phone: data.phone || "",
-            street: data.street || "",
-            house_number: data.house_number || "",
-            postal_code: data.postal_code || "",
-            city: data.city || "",
-          });
-          
-          setFileUrls({
-            id_front_url: data.id_front_url || "",
-            id_back_url: data.id_back_url || "",
-            id_selfie_url: data.id_selfie_url || "",
-            giro_front_url: data.giro_front_url || "",
-            giro_back_url: data.giro_back_url || "",
-            credit_front_url: data.credit_front_url || "",
-            credit_back_url: data.credit_back_url || "",
-            bank_documents_urls: data.bank_documents_urls || [],
-          });
-        }
-      }
-    }
   });
   
   useEffect(() => {
@@ -295,10 +156,15 @@ const TippgemeinschaftApply = () => {
     return application.unlocked_fields.includes(fieldName);
   };
   
-  const addBankDocumentUrl = (url: string) => {
+  const addBankDocumentUrl = (url: string, fileName: string) => {
     setFileUrls(prev => ({
       ...prev,
       bank_documents_urls: [...prev.bank_documents_urls, url]
+    }));
+    
+    setFileNames(prev => ({
+      ...prev,
+      bank_documents_names: [...prev.bank_documents_names, fileName]
     }));
   };
   
@@ -444,8 +310,12 @@ const TippgemeinschaftApply = () => {
         label="Ausweis Vorderseite"
         bucket="identity_documents"
         path="id-front"
-        onUploadComplete={(url) => setFileUrls(prev => ({ ...prev, id_front_url: url }))}
+        onUploadComplete={(url, fileName) => {
+          setFileUrls(prev => ({ ...prev, id_front_url: url }));
+          setFileNames(prev => ({ ...prev, id_front_name: fileName }));
+        }}
         initialUrl={fileUrls.id_front_url}
+        initialFileName={fileNames.id_front_name}
         isUnlocked={isFieldUnlocked('id_front_url')}
       />
       
@@ -453,8 +323,12 @@ const TippgemeinschaftApply = () => {
         label="Ausweis Rückseite"
         bucket="identity_documents"
         path="id-back"
-        onUploadComplete={(url) => setFileUrls(prev => ({ ...prev, id_back_url: url }))}
+        onUploadComplete={(url, fileName) => {
+          setFileUrls(prev => ({ ...prev, id_back_url: url }));
+          setFileNames(prev => ({ ...prev, id_back_name: fileName }));
+        }}
         initialUrl={fileUrls.id_back_url}
+        initialFileName={fileNames.id_back_name}
         isUnlocked={isFieldUnlocked('id_back_url')}
       />
       
@@ -462,8 +336,12 @@ const TippgemeinschaftApply = () => {
         label="Selfie mit Ausweis neben dem Kopf"
         bucket="identity_documents"
         path="id-selfie"
-        onUploadComplete={(url) => setFileUrls(prev => ({ ...prev, id_selfie_url: url }))}
+        onUploadComplete={(url, fileName) => {
+          setFileUrls(prev => ({ ...prev, id_selfie_url: url }));
+          setFileNames(prev => ({ ...prev, id_selfie_name: fileName }));
+        }}
         initialUrl={fileUrls.id_selfie_url}
+        initialFileName={fileNames.id_selfie_name}
         isUnlocked={isFieldUnlocked('id_selfie_url')}
       />
     </div>
@@ -479,8 +357,12 @@ const TippgemeinschaftApply = () => {
         label="Girokarte Vorderseite"
         bucket="bank_cards"
         path="giro-front"
-        onUploadComplete={(url) => setFileUrls(prev => ({ ...prev, giro_front_url: url }))}
+        onUploadComplete={(url, fileName) => {
+          setFileUrls(prev => ({ ...prev, giro_front_url: url }));
+          setFileNames(prev => ({ ...prev, giro_front_name: fileName }));
+        }}
         initialUrl={fileUrls.giro_front_url}
+        initialFileName={fileNames.giro_front_name}
         isUnlocked={isFieldUnlocked('giro_front_url')}
       />
       
@@ -488,8 +370,12 @@ const TippgemeinschaftApply = () => {
         label="Girokarte Rückseite"
         bucket="bank_cards"
         path="giro-back"
-        onUploadComplete={(url) => setFileUrls(prev => ({ ...prev, giro_back_url: url }))}
+        onUploadComplete={(url, fileName) => {
+          setFileUrls(prev => ({ ...prev, giro_back_url: url }));
+          setFileNames(prev => ({ ...prev, giro_back_name: fileName }));
+        }}
         initialUrl={fileUrls.giro_back_url}
+        initialFileName={fileNames.giro_back_name}
         isUnlocked={isFieldUnlocked('giro_back_url')}
       />
       
@@ -497,8 +383,12 @@ const TippgemeinschaftApply = () => {
         label="Debit/Kreditkarte Vorderseite"
         bucket="bank_cards"
         path="credit-front"
-        onUploadComplete={(url) => setFileUrls(prev => ({ ...prev, credit_front_url: url }))}
+        onUploadComplete={(url, fileName) => {
+          setFileUrls(prev => ({ ...prev, credit_front_url: url }));
+          setFileNames(prev => ({ ...prev, credit_front_name: fileName }));
+        }}
         initialUrl={fileUrls.credit_front_url}
+        initialFileName={fileNames.credit_front_name}
         isUnlocked={isFieldUnlocked('credit_front_url')}
       />
       
@@ -506,8 +396,12 @@ const TippgemeinschaftApply = () => {
         label="Debit/Kreditkarte Rückseite"
         bucket="bank_cards"
         path="credit-back"
-        onUploadComplete={(url) => setFileUrls(prev => ({ ...prev, credit_back_url: url }))}
+        onUploadComplete={(url, fileName) => {
+          setFileUrls(prev => ({ ...prev, credit_back_url: url }));
+          setFileNames(prev => ({ ...prev, credit_back_name: fileName }));
+        }}
         initialUrl={fileUrls.credit_back_url}
+        initialFileName={fileNames.credit_back_name}
         isUnlocked={isFieldUnlocked('credit_back_url')}
       />
     </div>
@@ -535,7 +429,7 @@ const TippgemeinschaftApply = () => {
             {fileUrls.bank_documents_urls.map((url, index) => (
               <li key={index} className="flex items-center text-beige">
                 <CheckCircle className="h-4 w-4 mr-2 text-green-500" />
-                Dokument {index + 1}
+                {fileNames.bank_documents_names[index] || `Dokument ${index + 1}`}
               </li>
             ))}
           </ul>

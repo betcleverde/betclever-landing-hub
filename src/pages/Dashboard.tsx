@@ -2,11 +2,12 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { useNavigate, Link } from "react-router-dom";
-import { Loader2, FileText, Users, Upload } from "lucide-react";
+import { Loader2, FileText, Users, Upload, MessageCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ButtonBeige } from "@/components/ui/button-beige";
+import SupportChat from "@/components/SupportChat";
 
 const Dashboard = () => {
   const { user, isLoading } = useAuth();
@@ -99,11 +100,13 @@ const Dashboard = () => {
               </Card>
               <Card className="bg-black/30 border border-beige/20">
                 <CardHeader>
-                  <CardTitle className="text-beige">Leitfaden</CardTitle>
-                  <CardDescription className="text-beige/70">Anleitungen und Leitfäden</CardDescription>
+                  <CardTitle className="text-beige">Support Tickets</CardTitle>
+                  <CardDescription className="text-beige/70">Benutzeranfragen bearbeiten</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-beige/70 mb-4">In Entwicklung</p>
+                  <ButtonBeige onClick={() => navigate("/admin/tickets")} className="w-full">
+                    <MessageCircle className="mr-2 h-4 w-4" /> Tickets anzeigen
+                  </ButtonBeige>
                 </CardContent>
               </Card>
               <Card className="bg-black/30 border border-beige/20">
@@ -193,6 +196,8 @@ const Dashboard = () => {
             )}
           </div>
         )}
+        
+        {!profile?.is_admin && <SupportChat />}
       </div>
     </div>
   );

@@ -19,6 +19,7 @@ import NotFound from "./pages/NotFound";
 import TippgemeinschaftApply from "./pages/TippgemeinschaftApply";
 import AdminUsers from "./pages/AdminUsers";
 import AdminApplications from "./pages/AdminApplications";
+import AdminTickets from "./pages/AdminTickets";
 
 const queryClient = new QueryClient();
 
@@ -42,6 +43,7 @@ const App = () => (
                 <Route path="/tippgemeinschaft/anmelden" element={<TippgemeinschaftApply />} />
                 <Route path="/admin/users" element={<AdminUsers />} />
                 <Route path="/admin/applications" element={<AdminApplications />} />
+                <Route path="/admin/tickets" element={<AdminTickets />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </main>
