@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { UserData, fromSupabase } from "@/types/supportTickets";
 
 const AdminUsers = () => {
   const { user, isLoading: authLoading } = useAuth();
@@ -18,7 +19,7 @@ const AdminUsers = () => {
   const { toast } = useToast();
   
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [selectedUser, setSelectedUser] = useState<UserData | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogType, setDialogType] = useState<"email" | "password">("email");
   const [newValue, setNewValue] = useState("");
@@ -45,19 +46,33 @@ const AdminUsers = () => {
   const { data: users, isLoading: usersLoading, refetch: refetchUsers } = useQuery({
     queryKey: ['admin-users'],
     queryFn: async () => {
+      console.log("Fetching users...");
       try {
         // First get all profiles to check admin status
         const { data: profiles, error: profilesError } = await supabase
           .from('profiles')
           .select('*');
           
-        if (profilesError) throw profilesError;
+        if (profilesError) {
+          console.error("Error fetching profiles:", profilesError);
+          throw profilesError;
+        }
         
-        // Get all users from auth.users via admin API (this may fail without service role)
+        console.log("Fetched profiles:", profiles);
+        
+        // Get all users from auth
         try {
+          // Attempt to get users via admin API 
+          // Note: This will likely fail with anon key, but we try anyway
+          console.log("Attempting to fetch auth users via admin API...");
           const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
           
-          if (authError) throw authError;
+          if (authError) {
+            console.warn("Admin API failed, will use alternative method:", authError);
+            throw authError;
+          }
+          
+          console.log("Successfully fetched users via admin API:", authUsers);
           
           // Merge auth users with profiles
           const mergedUsers = authUsers.users.map(authUser => {
@@ -68,20 +83,76 @@ const AdminUsers = () => {
             };
           });
           
-          return mergedUsers;
+          return fromSupabase<UserData[]>(mergedUsers);
         } catch (error) {
-          // Fallback: If admin API fails, use only profiles
-          console.log("Admin API failed, using profiles only", error);
-          return profiles.map(profile => ({
-            id: profile.id,
-            email: "N/A", // Email isn't accessible without admin API
-            is_admin: profile.is_admin || false,
-            last_sign_in_at: null,
-            banned: false
-          }));
+          console.log("Admin API failed as expected, using profiles only");
+          
+          // Fallback: Get users from other tables
+          // This is our fallback method since we can't directly query auth.users without admin rights
+          console.log("Fetching user data from other tables...");
+          
+          // Get all unique user_ids from tippgemeinschaft_applications
+          const { data: applicationUsers, error: applicationError } = await supabase
+            .from('tippgemeinschaft_applications')
+            .select('user_id, email')
+            .order('created_at', { ascending: false });
+            
+          if (applicationError) {
+            console.error("Error fetching application users:", applicationError);
+          }
+          
+          console.log("Fetched application users:", applicationUsers);
+          
+          // Create a map to deduplicate users
+          const userMap = new Map<string, UserData>();
+          
+          // Add profiles
+          profiles.forEach(profile => {
+            userMap.set(profile.id, {
+              id: profile.id,
+              is_admin: profile.is_admin || false,
+              email: "Unknown", // We don't have email in profiles
+              last_sign_in_at: null,
+              banned: false
+            });
+          });
+          
+          // Add application users (they have emails)
+          if (applicationUsers) {
+            applicationUsers.forEach(appUser => {
+              const existingUser = userMap.get(appUser.user_id);
+              if (existingUser) {
+                // Update email if we now have it
+                userMap.set(appUser.user_id, {
+                  ...existingUser,
+                  email: appUser.email
+                });
+              } else {
+                // Add new user
+                userMap.set(appUser.user_id, {
+                  id: appUser.user_id,
+                  email: appUser.email,
+                  is_admin: false,
+                  last_sign_in_at: null,
+                  banned: false
+                });
+              }
+            });
+          }
+          
+          const combinedUsers = Array.from(userMap.values());
+          console.log("Combined users from all sources:", combinedUsers);
+          
+          return fromSupabase<UserData[]>(combinedUsers);
         }
       } catch (error) {
-        console.error("Error fetching users:", error);
+        console.error("Error in admin users query:", error);
+        toast({
+          title: "Fehler beim Laden der Benutzer",
+          description: "Die Benutzerdaten konnten nicht geladen werden. Bitte versuchen Sie es später erneut.",
+          variant: "destructive",
+          duration: 5000,
+        });
         return [];
       }
     },
@@ -92,22 +163,46 @@ const AdminUsers = () => {
   const updateEmailMutation = useMutation({
     mutationFn: async ({ userId, email }: { userId: string, email: string }) => {
       try {
-        const { data, error } = await supabase.auth.admin.updateUserById(
-          userId,
-          { email }
-        );
+        // Since we can't use admin API directly with anon key,
+        // we'll just update the email in tippgemeinschaft_applications if it exists
+        const { data: applications, error: appError } = await supabase
+          .from('tippgemeinschaft_applications')
+          .update({ email })
+          .eq('user_id', userId)
+          .select();
+          
+        if (appError) {
+          console.error("Error updating email in applications:", appError);
+        }
         
-        if (error) throw error;
-        return data;
+        // Still attempt the admin update in case we have the rights
+        try {
+          const { data, error } = await supabase.auth.admin.updateUserById(
+            userId,
+            { email }
+          );
+          
+          if (error) throw error;
+          return data;
+        } catch (adminError) {
+          console.error("Admin update failed:", adminError);
+          // Succeed only if we updated the application
+          if (applications && applications.length > 0) {
+            return { message: "Email nur in Anwendungen aktualisiert" };
+          }
+          throw new Error("E-Mail konnte nicht aktualisiert werden.");
+        }
       } catch (error: any) {
         console.error("Update email error:", error);
         throw new Error(error.message || "E-Mail konnte nicht aktualisiert werden.");
       }
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast({
         title: "E-Mail aktualisiert",
-        description: "Die E-Mail-Adresse wurde erfolgreich aktualisiert.",
+        description: typeof data === 'object' && 'message' in data 
+          ? data.message 
+          : "Die E-Mail-Adresse wurde erfolgreich aktualisiert.",
         duration: 3000,
       });
       setDialogOpen(false);
@@ -189,7 +284,7 @@ const AdminUsers = () => {
   });
   
   // Open dialog for email update
-  const openEmailDialog = (user: any) => {
+  const openEmailDialog = (user: UserData) => {
     setSelectedUser(user);
     setDialogType("email");
     setNewValue(user.email || "");
@@ -197,7 +292,7 @@ const AdminUsers = () => {
   };
   
   // Open dialog for password update
-  const openPasswordDialog = (user: any) => {
+  const openPasswordDialog = (user: UserData) => {
     setSelectedUser(user);
     setDialogType("password");
     setNewValue("");
@@ -224,7 +319,7 @@ const AdminUsers = () => {
   const filteredUsers = users?.filter(user => 
     user.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     user.phone?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  ) || [];
   
   useEffect(() => {
     if (!authLoading && !user) {
@@ -302,7 +397,7 @@ const AdminUsers = () => {
                 {filteredUsers && filteredUsers.length > 0 ? (
                   filteredUsers.map((user) => (
                     <TableRow key={user.id}>
-                      <TableCell className="font-medium text-beige">{user.email}</TableCell>
+                      <TableCell className="font-medium text-beige">{user.email || 'Keine E-Mail'}</TableCell>
                       <TableCell className="text-beige">
                         {user.banned ? (
                           <span className="text-destructive">Gesperrt</span>
@@ -316,7 +411,7 @@ const AdminUsers = () => {
                       <TableCell>
                         <div 
                           className={`w-4 h-4 rounded-full ${user.is_admin ? 'bg-green-500' : 'bg-gray-400'}`}
-                          onClick={() => toggleAdminStatus(user.id, user.is_admin)}
+                          onClick={() => toggleAdminStatus(user.id, user.is_admin || false)}
                           style={{ cursor: 'pointer' }}
                         />
                       </TableCell>

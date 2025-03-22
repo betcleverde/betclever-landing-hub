@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -13,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ApplicationData, fromSupabase } from "@/types/supportTickets";
 
 const AdminApplications = () => {
   const { user, isLoading: authLoading } = useAuth();
@@ -21,7 +23,7 @@ const AdminApplications = () => {
   const { toast } = useToast();
   
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedApplication, setSelectedApplication] = useState<any>(null);
+  const [selectedApplication, setSelectedApplication] = useState<ApplicationData | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogType, setDialogType] = useState<"view" | "edit" | "approve" | "reject">("view");
   const [feedback, setFeedback] = useState("");
@@ -53,17 +55,16 @@ const AdminApplications = () => {
   const { data: applications, isLoading: applicationsLoading, refetch: refetchApplications } = useQuery({
     queryKey: ['admin-applications', filterUserId],
     queryFn: async () => {
+      console.log("Fetching applications, filter user:", filterUserId);
       try {
-        // Build query
-        let query = supabase
-          .from('tippgemeinschaft_applications')
-          .select();
+        let query = supabase.from('tippgemeinschaft_applications').select('*');
         
         // Apply user filter if provided
         if (filterUserId) {
           query = query.eq('user_id', filterUserId);
         }
         
+        // Execute the query
         const { data, error } = await query;
         
         if (error) {
@@ -71,15 +72,22 @@ const AdminApplications = () => {
           throw error;
         }
         
+        console.log("Fetched applications:", data?.length || 0, "records");
+        
         if (!data || data.length === 0) {
           console.log("No applications found");
           return [];
         }
         
-        console.log("Fetched applications:", data);
-        return data;
+        return fromSupabase<ApplicationData[]>(data);
       } catch (error) {
-        console.error("Error in queryFn:", error);
+        console.error("Error in applications query:", error);
+        toast({
+          title: "Fehler beim Laden der Anträge",
+          description: "Die Anträge konnten nicht geladen werden. Bitte versuchen Sie es später erneut.",
+          variant: "destructive",
+          duration: 5000,
+        });
         return [];
       }
     },
@@ -89,6 +97,7 @@ const AdminApplications = () => {
   // Approve application
   const approveApplicationMutation = useMutation({
     mutationFn: async ({ id, feedback }: { id: string, feedback?: string }) => {
+      console.log("Approving application:", id, "with feedback:", feedback);
       const { data, error } = await supabase
         .from('tippgemeinschaft_applications')
         .update({ 
@@ -99,7 +108,12 @@ const AdminApplications = () => {
         .eq('id', id)
         .select();
         
-      if (error) throw error;
+      if (error) {
+        console.error("Error approving application:", error);
+        throw error;
+      }
+      
+      console.log("Approved application:", data);
       return data;
     },
     onSuccess: () => {
@@ -124,6 +138,7 @@ const AdminApplications = () => {
   // Reject application with feedback
   const rejectApplicationMutation = useMutation({
     mutationFn: async ({ id, feedback, unlockedFields }: { id: string, feedback: string, unlockedFields: string[] }) => {
+      console.log("Rejecting application:", id, "with feedback:", feedback, "unlocked fields:", unlockedFields);
       const { data, error } = await supabase
         .from('tippgemeinschaft_applications')
         .update({ 
@@ -134,7 +149,12 @@ const AdminApplications = () => {
         .eq('id', id)
         .select();
         
-      if (error) throw error;
+      if (error) {
+        console.error("Error rejecting application:", error);
+        throw error;
+      }
+      
+      console.log("Rejected application:", data);
       return data;
     },
     onSuccess: () => {
@@ -159,11 +179,15 @@ const AdminApplications = () => {
   // Download file
   const downloadFile = async (bucketName: string, filePath: string) => {
     try {
+      console.log("Downloading file from bucket:", bucketName, "path:", filePath);
       const { data, error } = await supabase.storage
         .from(bucketName)
         .download(filePath);
         
-      if (error) throw error;
+      if (error) {
+        console.error("Error downloading file:", error);
+        throw error;
+      }
       
       // Create a blob URL and trigger download
       const url = URL.createObjectURL(data);
@@ -174,7 +198,10 @@ const AdminApplications = () => {
       a.click();
       URL.revokeObjectURL(url);
       document.body.removeChild(a);
+      
+      console.log("File downloaded successfully");
     } catch (error: any) {
+      console.error("Download error:", error);
       toast({
         title: "Fehler beim Herunterladen",
         description: error.message || "Die Datei konnte nicht heruntergeladen werden.",
@@ -187,31 +214,41 @@ const AdminApplications = () => {
   // Extract bucket and path from URL
   const extractBucketAndPath = (url: string) => {
     if (!url) return { bucket: "", path: "" };
+    console.log("Extracting bucket and path from URL:", url);
     
     // Example URL: https://lyowetrsgzypudijzvmb.supabase.co/storage/v1/object/public/identity_documents/123-456/id-front-12345.jpg
     const parts = url.split('/storage/v1/object/public/');
-    if (parts.length < 2) return { bucket: "", path: "" };
+    if (parts.length < 2) {
+      console.warn("URL format not recognized:", url);
+      return { bucket: "", path: "" };
+    }
     
     const bucketAndPath = parts[1];
     const slashIndex = bucketAndPath.indexOf('/');
     
-    if (slashIndex === -1) return { bucket: "", path: "" };
+    if (slashIndex === -1) {
+      console.warn("No slash found in bucket and path:", bucketAndPath);
+      return { bucket: "", path: "" };
+    }
     
     const bucket = bucketAndPath.substring(0, slashIndex);
     const path = bucketAndPath.substring(slashIndex + 1);
     
+    console.log("Extracted bucket:", bucket, "path:", path);
     return { bucket, path };
   };
   
   // Open view dialog
-  const openViewDialog = (application: any) => {
+  const openViewDialog = (application: ApplicationData) => {
+    console.log("Opening view dialog for application:", application.id);
     setSelectedApplication(application);
     setDialogType("view");
     setDialogOpen(true);
   };
   
   // Open approve dialog
-  const openApproveDialog = (application: any) => {
+  const openApproveDialog = (application: ApplicationData) => {
+    console.log("Opening approve dialog for application:", application.id);
     setSelectedApplication(application);
     setDialogType("approve");
     setFeedback("");
@@ -219,7 +256,8 @@ const AdminApplications = () => {
   };
   
   // Open reject dialog
-  const openRejectDialog = (application: any) => {
+  const openRejectDialog = (application: ApplicationData) => {
+    console.log("Opening reject dialog for application:", application.id);
     setSelectedApplication(application);
     setDialogType("reject");
     setFeedback("");
@@ -270,7 +308,7 @@ const AdminApplications = () => {
     app.last_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     app.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     app.phone?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  ) || [];
   
   useEffect(() => {
     if (!authLoading && !user) {
@@ -300,7 +338,7 @@ const AdminApplications = () => {
     return null;
   }
   
-  console.log("Rendered applications:", filteredApplications);
+  console.log("Rendering applications component with", filteredApplications.length, "filtered applications");
   
   return (
     <div className="pt-32 pb-24 px-6">
@@ -335,7 +373,7 @@ const AdminApplications = () => {
             </div>
           </div>
           
-          {filteredApplications?.length === 0 ? (
+          {filteredApplications.length === 0 ? (
             <div className="text-center py-8 text-beige/70">
               Keine Anträge gefunden.
             </div>
@@ -352,7 +390,7 @@ const AdminApplications = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredApplications?.map((app) => (
+                  {filteredApplications.map((app) => (
                     <TableRow key={app.id}>
                       <TableCell className="font-medium text-beige">
                         {app.first_name} {app.last_name}
@@ -408,6 +446,7 @@ const AdminApplications = () => {
         </div>
       </div>
       
+      {/* Application Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-4xl">
           <DialogHeader>
