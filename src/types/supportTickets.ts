@@ -8,8 +8,7 @@ export interface Message {
   created_at: string;
 }
 
-// Helper function to access the support_tickets table
-// This is a workaround since we can't modify the generated types.ts
+// Helper function to safely convert Supabase data to our defined types
 export const fromSupabase = <T>(data: any): T => {
   return data as T;
 }
