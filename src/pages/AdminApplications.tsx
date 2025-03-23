@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -26,6 +25,30 @@ const AdminApplications = () => {
   const [selectedApplication, setSelectedApplication] = useState<ApplicationData | null>(null);
   const [feedback, setFeedback] = useState("");
   const [unlockFields, setUnlockFields] = useState<Record<string, boolean>>({});
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // Check if user is admin
+  useEffect(() => {
+    if (!user) return;
+
+    const checkAdminStatus = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('is_admin')
+          .eq('id', user.id)
+          .single();
+
+        if (!error && data) {
+          setIsAdmin(!!data.is_admin);
+        }
+      } catch (error) {
+        console.error('Error checking admin status:', error);
+      }
+    };
+
+    checkAdminStatus();
+  }, [user]);
 
   // Fetch applications query
   const { data: applications, isLoading, error, refetch: fetchApplications } = useQuery({
@@ -138,8 +161,6 @@ const AdminApplications = () => {
   // Open dialog for approving application
   const openApproveDialog = (application: ApplicationData) => {
     setSelectedApplication(application);
-    // Additional logic for approve dialog if needed
-    // For now, directly approve
     if (application.id) {
       approveMutation.mutate(application.id);
     }
@@ -170,7 +191,7 @@ const AdminApplications = () => {
 
   // Check if user is authorized to view this page
   useEffect(() => {
-    if (!user?.is_admin) {
+    if (!isAdmin) {
       navigate("/dashboard");
       toast({
         title: "Zugriff verweigert",
@@ -178,7 +199,7 @@ const AdminApplications = () => {
         variant: "destructive",
       });
     }
-  }, [user, navigate, toast]);
+  }, [isAdmin, navigate, toast]);
 
   return (
     <div className="pt-32 pb-24 px-6">
