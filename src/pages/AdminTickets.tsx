@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { useNavigate } from "react-router-dom";
@@ -24,49 +23,40 @@ const AdminTickets = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (!user) return;
+
+    const checkAdminStatus = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('is_admin')
+          .eq('id', user.id)
+          .single();
+
+        if (error) throw error;
+        setIsAdmin(!!data?.is_admin);
+      } catch (error) {
+        console.error('Error checking admin status:', error);
+      }
+    };
+
+    checkAdminStatus();
+  }, [user]);
+
+  useEffect(() => {
     if (!isLoading && (!user || !isAdmin)) {
       navigate("/login", { replace: true });
     }
   }, [user, isLoading, navigate, isAdmin]);
 
   useEffect(() => {
-    if (user) {
-      checkAdminStatus();
+    if (user && isAdmin) {
       loadAllConversations();
     }
-  }, [user]);
-
-  useEffect(() => {
-    if (selectedUserId) {
-      scrollToBottom();
-      
-      // Remove from recent messages when conversation is selected
-      setRecentUsers(prev => {
-        const updated = new Set(prev);
-        updated.delete(selectedUserId);
-        return updated;
-      });
-    }
-  }, [selectedUserId, allConversations]);
+  }, [user, isAdmin]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  const checkAdminStatus = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('is_admin')
-        .eq('id', user?.id)
-        .single();
-
-      if (error) throw error;
-      setIsAdmin(!!data?.is_admin);
-    } catch (error) {
-      console.error('Error checking admin status:', error);
-      navigate("/", { replace: true });
-    }
   };
 
   const loadAllConversations = async () => {
@@ -78,7 +68,6 @@ const AdminTickets = () => {
 
       if (error) throw error;
 
-      // Group by user_id
       const groupedMessages = fromSupabase<Message[]>(data).reduce((acc: { [key: string]: Message[] }, message: Message) => {
         const userId = message.user_id;
         if (!acc[userId]) {
@@ -90,7 +79,6 @@ const AdminTickets = () => {
 
       setAllConversations(groupedMessages);
       
-      // Find recent messages (last 24 hours) to highlight them
       const oneDayAgo = new Date();
       oneDayAgo.setDate(oneDayAgo.getDate() - 1);
       
@@ -113,7 +101,6 @@ const AdminTickets = () => {
   useEffect(() => {
     if (!user) return;
 
-    // Subscribe to realtime changes
     const subscription = supabase
       .channel('admin_tickets_changes')
       .on('postgres_changes', {
@@ -130,7 +117,6 @@ const AdminTickets = () => {
           };
         });
         
-        // If message is from user (not admin) and not currently viewing that conversation
         if (!newMessage.is_admin && selectedUserId !== newMessage.user_id) {
           setRecentUsers(prev => {
             const updated = new Set(prev);
@@ -138,7 +124,6 @@ const AdminTickets = () => {
             return updated;
           });
           
-          // Show toast notification for new message
           toast({
             title: "Neue Support-Anfrage",
             description: `Neue Nachricht von ${newMessage.user_email || 'einem Benutzer'}`,
@@ -187,7 +172,6 @@ const AdminTickets = () => {
 
       if (error) throw error;
 
-      // Update state
       setAllConversations(prev => {
         const newConversations = { ...prev };
         delete newConversations[userId];
@@ -198,7 +182,6 @@ const AdminTickets = () => {
         setSelectedUserId(null);
       }
       
-      // Remove from recent users if present
       setRecentUsers(prev => {
         const updated = new Set(prev);
         updated.delete(userId);
@@ -244,7 +227,6 @@ const AdminTickets = () => {
         </div>
 
         <div className="grid md:grid-cols-12 gap-6">
-          {/* Conversations List */}
           <div className="md:col-span-4">
             <Card className="bg-black/50 border border-beige/20 h-[600px] overflow-hidden flex flex-col">
               <CardHeader>
@@ -320,88 +302,62 @@ const AdminTickets = () => {
             </Card>
           </div>
 
-          {/* Chat Window */}
           <div className="md:col-span-8">
-            <Card className="bg-black/50 border border-beige/20 h-[600px] flex flex-col">
-              {selectedUserId ? (
-                <>
-                  <CardHeader className="pb-2">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <CardTitle className="text-beige flex items-center">
-                          <button 
-                            onClick={() => setSelectedUserId(null)}
-                            className="mr-2 md:hidden"
-                          >
-                            <ArrowLeftCircle className="h-5 w-5 text-beige/70" />
-                          </button>
-                          {allConversations[selectedUserId][0]?.user_email || 'Benutzer'}
-                        </CardTitle>
-                        <CardDescription className="text-beige/70">
-                          {allConversations[selectedUserId].length} Nachrichten
-                        </CardDescription>
-                      </div>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleDeleteConversation(selectedUserId)}
-                      >
-                        <Trash2 className="h-4 w-4 mr-1" /> Löschen
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="flex-grow overflow-y-auto">
-                    <div className="space-y-4">
-                      {allConversations[selectedUserId].map((msg) => (
-                        <div
-                          key={msg.id}
-                          className={`p-3 rounded-lg max-w-[85%] ${
-                            msg.is_admin
-                              ? "bg-beige text-black ml-auto"
-                              : "bg-beige/20 text-beige mr-auto"
-                          }`}
+            {selectedUserId ? (
+              <>
+                <CardHeader className="pb-2">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <CardTitle className="text-beige flex items-center">
+                        <button 
+                          onClick={() => setSelectedUserId(null)}
+                          className="mr-2 md:hidden"
                         >
-                          <p className="text-sm">{msg.content}</p>
-                          <p className="text-xs opacity-70 mt-1">
-                            {new Date(msg.created_at).toLocaleString()}
-                          </p>
-                        </div>
-                      ))}
-                      <div ref={messagesEndRef} />
+                          <ArrowLeftCircle className="h-5 w-5 text-beige/70" />
+                        </button>
+                        {allConversations[selectedUserId][0]?.user_email || 'Benutzer'}
+                      </CardTitle>
+                      <CardDescription className="text-beige/70">
+                        {allConversations[selectedUserId].length} Nachrichten
+                      </CardDescription>
                     </div>
-                  </CardContent>
-                  <div className="p-4 border-t border-beige/20">
-                    <form onSubmit={handleSendMessage} className="flex space-x-2">
-                      <Input
-                        placeholder="Ihre Antwort..."
-                        value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
-                        className="bg-black/30 border-beige/30 text-beige"
-                      />
-                      <ButtonBeige type="submit" disabled={isLoadingMessage}>
-                        <Send className="h-4 w-4 mr-1" /> Senden
-                      </ButtonBeige>
-                    </form>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => handleDeleteConversation(selectedUserId)}
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" /> Löschen
+                    </Button>
                   </div>
-                </>
-              ) : (
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center">
-                    <p className="text-beige/70 mb-4">
-                      Wählen Sie eine Konversation aus der Liste
-                    </p>
-                    <ButtonBeige onClick={() => navigate("/admin/users")}>
-                      Zurück zum Dashboard
-                    </ButtonBeige>
+                </CardHeader>
+                <CardContent className="flex-grow overflow-y-auto">
+                  <div className="space-y-4">
+                    {allConversations[selectedUserId].map((msg) => (
+                      <div
+                        key={msg.id}
+                        className={`p-3 rounded-lg max-w-[85%] ${
+                          msg.is_admin
+                            ? "bg-beige text-black ml-auto"
+                            : "bg-beige/20 text-beige mr-auto"
+                        }`}
+                      >
+                        <p className="text-sm">{msg.content}</p>
+                        <p className="text-xs opacity-70 mt-1">
+                          {new Date(msg.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                    ))}
+                    <div ref={messagesEndRef} />
                   </div>
-                </div>
-              )}
-            </Card>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
+                </CardContent>
+                <div className="p-4 border-t border-beige/20">
+                  <form onSubmit={handleSendMessage} className="flex space-x-2">
+                    <Input
+                      placeholder="Ihre Antwort..."
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      className="bg-black/30 border-beige/30 text-beige"
+                    />
+                    <ButtonBeige type="submit" disabled={isLoadingMessage}>
+                      <Send
 
-export default AdminTickets;
