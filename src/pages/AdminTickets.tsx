@@ -1,14 +1,14 @@
-import { useState, useEffect, useRef } from "react";
+
+import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { useNavigate } from "react-router-dom";
-import { Loader2, Trash2, Send, ArrowLeftCircle } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Message, fromSupabase } from "@/types/supportTickets";
-import { ButtonBeige } from "@/components/ui/button-beige";
 import { useToast } from "@/hooks/use-toast";
+import { ConversationList } from "@/components/admin/ConversationList";
+import { ChatInterface } from "@/components/admin/ChatInterface";
+import { NoConversationSelected } from "@/components/admin/NoConversationSelected";
 
 const AdminTickets = () => {
   const { user, isLoading } = useAuth();
@@ -20,7 +20,6 @@ const AdminTickets = () => {
   const [newMessage, setNewMessage] = useState("");
   const [isLoadingMessage, setIsLoadingMessage] = useState(false);
   const [recentUsers, setRecentUsers] = useState<Set<string>>(new Set());
-  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -54,10 +53,6 @@ const AdminTickets = () => {
       loadAllConversations();
     }
   }, [user, isAdmin]);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
 
   const loadAllConversations = async () => {
     try {
@@ -228,150 +223,29 @@ const AdminTickets = () => {
 
         <div className="grid md:grid-cols-12 gap-6">
           <div className="md:col-span-4">
-            <Card className="bg-black/50 border border-beige/20 h-[600px] overflow-hidden flex flex-col">
-              <CardHeader>
-                <CardTitle className="text-beige">Konversationen</CardTitle>
-                <CardDescription className="text-beige/70">
-                  {Object.keys(allConversations).length} aktive Gespräche
-                  {recentUsers.size > 0 && (
-                    <span className="ml-2 text-red-400">
-                      ({recentUsers.size} neu)
-                    </span>
-                  )}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex-grow overflow-y-auto">
-                {Object.keys(allConversations).length === 0 ? (
-                  <p className="text-center text-beige/50 py-8">
-                    Keine aktiven Gespräche
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {Object.entries(allConversations).map(([userId, messages]) => {
-                      const userEmail = messages[0]?.user_email || 'Unbekannter Benutzer';
-                      const lastMessage = messages[messages.length - 1];
-                      const isRecent = recentUsers.has(userId);
-                      
-                      return (
-                        <div
-                          key={userId}
-                          className={`p-3 rounded-lg cursor-pointer transition-all ${
-                            selectedUserId === userId
-                              ? "bg-beige text-black"
-                              : isRecent
-                                ? "bg-beige/40 text-white border-l-4 border-red-500" 
-                                : "bg-black/30 text-beige hover:bg-beige/20"
-                          }`}
-                          onClick={() => setSelectedUserId(userId)}
-                        >
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <p className="font-medium truncate flex items-center">
-                                {userEmail}
-                                {isRecent && (
-                                  <span className="ml-2 bg-red-500 text-white text-xs font-bold rounded-full w-4 h-4 flex items-center justify-center">
-                                    !
-                                  </span>
-                                )}
-                              </p>
-                              <p className="text-sm opacity-70 truncate">
-                                {lastMessage?.content}
-                              </p>
-                              <p className="text-xs opacity-50">
-                                {new Date(lastMessage?.created_at).toLocaleString()}
-                              </p>
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-red-500 h-8 w-8"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteConversation(userId);
-                              }}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <ConversationList
+              conversations={allConversations}
+              recentUsers={recentUsers}
+              selectedUserId={selectedUserId}
+              onSelectConversation={setSelectedUserId}
+              onDeleteConversation={handleDeleteConversation}
+            />
           </div>
 
           <div className="md:col-span-8">
             {selectedUserId ? (
-              <Card className="bg-black/50 border border-beige/20 h-[600px] overflow-hidden flex flex-col">
-                <CardHeader className="pb-2">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <CardTitle className="text-beige flex items-center">
-                        <button 
-                          onClick={() => setSelectedUserId(null)}
-                          className="mr-2 md:hidden"
-                        >
-                          <ArrowLeftCircle className="h-5 w-5 text-beige/70" />
-                        </button>
-                        {allConversations[selectedUserId][0]?.user_email || 'Benutzer'}
-                      </CardTitle>
-                      <CardDescription className="text-beige/70">
-                        {allConversations[selectedUserId].length} Nachrichten
-                      </CardDescription>
-                    </div>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleDeleteConversation(selectedUserId)}
-                    >
-                      <Trash2 className="h-4 w-4 mr-1" /> Löschen
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="flex-grow overflow-y-auto">
-                  <div className="space-y-4">
-                    {allConversations[selectedUserId].map((msg) => (
-                      <div
-                        key={msg.id}
-                        className={`p-3 rounded-lg max-w-[85%] ${
-                          msg.is_admin
-                            ? "bg-beige text-black ml-auto"
-                            : "bg-beige/20 text-beige mr-auto"
-                        }`}
-                      >
-                        <p className="text-sm">{msg.content}</p>
-                        <p className="text-xs opacity-70 mt-1">
-                          {new Date(msg.created_at).toLocaleString()}
-                        </p>
-                      </div>
-                    ))}
-                    <div ref={messagesEndRef} />
-                  </div>
-                </CardContent>
-                <div className="p-4 border-t border-beige/20">
-                  <form onSubmit={handleSendMessage} className="flex space-x-2">
-                    <Input
-                      placeholder="Ihre Antwort..."
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      className="bg-black/30 border-beige/30 text-beige"
-                    />
-                    <ButtonBeige type="submit" disabled={isLoadingMessage}>
-                      <Send className="h-4 w-4 mr-1" /> 
-                      Senden
-                    </ButtonBeige>
-                  </form>
-                </div>
-              </Card>
+              <ChatInterface
+                userId={selectedUserId}
+                messages={allConversations[selectedUserId]}
+                newMessage={newMessage}
+                isLoadingMessage={isLoadingMessage}
+                onMessageChange={setNewMessage}
+                onSendMessage={handleSendMessage}
+                onDeleteConversation={handleDeleteConversation}
+                onBack={() => setSelectedUserId(null)}
+              />
             ) : (
-              <Card className="bg-black/50 border border-beige/20 h-[600px] flex items-center justify-center">
-                <div className="text-center text-beige/50">
-                  <p>Keine Konversation ausgewählt</p>
-                  <p className="text-sm mt-2">Wählen Sie eine Konversation aus der Liste</p>
-                </div>
-              </Card>
+              <NoConversationSelected />
             )}
           </div>
         </div>
