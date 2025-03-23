@@ -14,6 +14,13 @@ import {
 import { ButtonBeige } from "./ui/button-beige";
 import { supabase } from "@/integrations/supabase/client";
 
+// Define the type for navigation items
+interface NavItem {
+  name: string;
+  path: string;
+  badge?: number;
+}
+
 const NavigationBar = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -66,7 +73,7 @@ const NavigationBar = () => {
     navigate("/login");
   };
 
-  const navItems = [
+  const navItems: NavItem[] = [
     { name: "Home", path: "/" },
     { name: "Teilnahme & Affiliate", path: "/participation" },
     { name: "Datenschutz", path: "/privacy" },
