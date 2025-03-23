@@ -25,6 +25,7 @@ const NavigationBar = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [unreadMessages, setUnreadMessages] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
   const { user, login, logout, isLoading } = useAuth();
@@ -65,6 +66,55 @@ const NavigationBar = () => {
     checkAdminStatus();
   }, [user]);
 
+  // Fetch unread messages count for admin
+  useEffect(() => {
+    if (!user || !isAdmin) return;
+
+    const fetchUnreadMessages = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('support_tickets')
+          .select('*')
+          .eq('is_admin', false)
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        if (error) throw error;
+        
+        // Count messages from last 24 hours as "unread" for admin
+        const oneDayAgo = new Date();
+        oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+        
+        const recentMessages = data.filter(msg => 
+          new Date(msg.created_at) > oneDayAgo
+        );
+        
+        setUnreadMessages(recentMessages.length);
+      } catch (error) {
+        console.error('Error fetching unread admin messages:', error);
+      }
+    };
+
+    fetchUnreadMessages();
+
+    // Subscribe to new user messages for real-time updates for admin
+    const subscription = supabase
+      .channel('admin_unread_messages')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'support_tickets',
+        filter: 'is_admin=eq.false',
+      }, () => {
+        fetchUnreadMessages();
+      })
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [user, isAdmin]);
+
   const toggleMobileMenu = () => {
     setMobileMenuOpen(!mobileMenuOpen);
   };
@@ -78,6 +128,17 @@ const NavigationBar = () => {
     { name: "Teilnahme & Affiliate", path: "/participation" },
     { name: "Datenschutz", path: "/privacy" },
     ...(user ? [{ name: "Dashboard", path: "/dashboard" }] : []),
+    ...(isAdmin ? [
+      { 
+        name: "Support Tickets", 
+        path: "/admin/tickets", 
+        badge: unreadMessages > 0 ? unreadMessages : undefined
+      },
+      { 
+        name: "Anträge", 
+        path: "/admin/applications" 
+      }
+    ] : []),
   ];
 
   return (
@@ -175,9 +236,14 @@ const NavigationBar = () => {
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => navigate("/admin/applications")}>
                       Anträge verwalten
-                    </DropdownMenuItem>
+                      </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => navigate("/admin/tickets")}>
                       Support Tickets
+                      {unreadMessages > 0 && (
+                        <span className="ml-2 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                          {unreadMessages > 9 ? '9+' : unreadMessages}
+                        </span>
+                      )}
                     </DropdownMenuItem>
                   </>
                 )}
