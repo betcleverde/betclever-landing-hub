@@ -304,7 +304,7 @@ const AdminTickets = () => {
 
           <div className="md:col-span-8">
             {selectedUserId ? (
-              <>
+              <Card className="bg-black/50 border border-beige/20 h-[600px] overflow-hidden flex flex-col">
                 <CardHeader className="pb-2">
                   <div className="flex justify-between items-center">
                     <div>
@@ -359,5 +359,25 @@ const AdminTickets = () => {
                       className="bg-black/30 border-beige/30 text-beige"
                     />
                     <ButtonBeige type="submit" disabled={isLoadingMessage}>
-                      <Send
+                      <Send className="h-4 w-4 mr-1" /> 
+                      Senden
+                    </ButtonBeige>
+                  </form>
+                </div>
+              </Card>
+            ) : (
+              <Card className="bg-black/50 border border-beige/20 h-[600px] flex items-center justify-center">
+                <div className="text-center text-beige/50">
+                  <p>Keine Konversation ausgewählt</p>
+                  <p className="text-sm mt-2">Wählen Sie eine Konversation aus der Liste</p>
+                </div>
+              </Card>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
+export default AdminTickets;
